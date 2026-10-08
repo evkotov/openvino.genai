@@ -20,6 +20,8 @@ def write_result(report_file, model, framework, device, model_args, iter_data_li
     metadata = {'model': model, 'framework': framework, 'device': device, 'precision': model_precision,
                 'num_beams': model_args['num_beams'], 'batch_size': model_args['batch_size'],
                 'config': model_args.get('config_report', model_args.get('config', {})), 'config_injected': model_args.get('config_injected', {})}
+    if model_args.get('environment'):
+        metadata['environment'] = model_args['environment']
     result = []
     total_iters = len(iter_data_list)
     for i in range(total_iters):

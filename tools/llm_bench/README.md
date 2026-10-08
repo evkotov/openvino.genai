@@ -123,6 +123,14 @@ excluded): in the log (`[Stats]` lines), in the CSV report (`stdev` and `cv(%)` 
 one process. The difference between processes is often larger, so a comparison of two configurations should run each of
 them in several processes.
 
+#### Environment in the JSON report
+The JSON report (`-rj`) stores the environment of the run in `metadata.environment`: the command line, package versions,
+`OV_*`/`GGML_*`/`OMP_*`/`TBB_*`-like environment variables, the CPU model and topology (performance and efficient cores,
+SMT), CPU frequency governor, turbo and limits, disabled C-states, transparent huge pages, OS, kernel and libc, the
+process CPU affinity, the load average and thermal throttling events during the run, the CPUs used by the busy threads,
+and the model file size (with `--model_sha256` also its SHA-256; for GGUF files the architecture and the share of each
+tensor type).
+
 #### Benchmarking the Original PyTorch Model:
 To benchmark the original PyTorch model, first download the model locally and then run benchmark by specifying PyTorch as the framework with parameter `-f pt`
 
