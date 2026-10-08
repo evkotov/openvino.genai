@@ -850,6 +850,13 @@ jobs:
         env:
           SAMPLES_CPP_DIR: "${{ env.INSTALL_DIR }}/samples_bin"
 
+      # Unit tests without model downloads, run ahead of the sample tests to fail early.
+      - name: Test LLM Benchmark Unit Tests
+        if: ${{ fromJSON(needs.smart_ci.outputs.affected_components).llm_bench }}
+        run: |
+          source ${{ env.INSTALL_DIR }}/setupvars.sh
+          python -m pytest -v ${{ env.SRC_DIR }}/tools/llm_bench/tests
+
       - name: Test LLM Benchmark Tools Image2Video
         if: ${{ fromJSON(needs.smart_ci.outputs.affected_components).llm_bench }}
         run: |
