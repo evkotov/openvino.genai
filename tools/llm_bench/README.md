@@ -116,6 +116,26 @@ python benchmark.py -m models/llama-2-7b-chat/ -pf prompts/llama-2-7b-chat_l.jso
 python ./benchmark.py -h # for more information
 ```
 
+#### Benchmarking a GGUF model with llama.cpp
+`-f llamacpp` runs text generation of a `.gguf` file with llama.cpp through llama-cpp-python (`pip install llama-cpp-python`),
+so that it can be compared with OpenVINO on the same file, prompts and iteration counts. Every iteration starts from an
+empty KV cache, generates exactly `-ic` tokens greedily (EOS is ignored, as for OpenVINO GenAI), and reports the 1st token
+(prompt processing) and 2nd token latencies like the other frameworks. `-lc` takes llama-cpp-python `Llama()` arguments;
+the defaults follow llama-bench on CPU: `n_batch` 2048, `n_ubatch` 512, flash attention on, `n_threads_batch` equal to
+`n_threads`, and `n_threads` equal to the number of `--cpu_affinity` CPUs (with `--cpu_affinity` the OpenMP threads are
+bound one per CPU). `n_ctx` defaults to 4096 or the longest token id prompt plus `-ic`.
+
+```bash
+python benchmark.py -m model.gguf -f llamacpp --prompt_token_ids ids.txt -np 512 -ic 129 -n 5 --cpu_affinity 1-15:2 -rj llamacpp.json
+python benchmark.py -m model.gguf --prompt_token_ids ids.txt -np 512 -ic 129 -n 5 --cpu_affinity 1-15:2 --attention_backend SDPA \
+    -lc '{"INFERENCE_NUM_THREADS": 8}' -rj openvino.json
+```
+
+> **Note:** llama.cpp CPU builds use OpenMP, and the default wait policy of the loaded OpenMP runtime changes the decode
+> speed by up to ~15% (llama-cpp-python may use the libgomp bundled with torch). Set `OMP_WAIT_POLICY` explicitly, the
+> same way for every llama.cpp run that is compared. The JSON report lists the loaded OpenMP runtimes in
+> `metadata.environment.openmp_runtimes`.
+
 #### Spread of the results
 For every prompt llm_bench reports the median, standard deviation, coefficient of variation and a 95% bootstrap
 confidence interval of the median of the 1st and 2nd token latencies over the measured iterations (the warm-up is

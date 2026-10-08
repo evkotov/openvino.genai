@@ -150,6 +150,11 @@ def set_default_param_for_ov_config(ov_config):
         ov_config['CACHE_DIR'] = ''
 
 
+def select_task(task, framework):
+    # llama.cpp runs text generation only; GGUF architectures such as gemma4 would be detected as VLMs
+    return "text_gen" if task is None and framework == "llamacpp" else task
+
+
 PA_DEFAULT_TASKS = ("text_gen", "text_gen_chat", "visual_text_gen", "visual_text_gen_chat")
 
 
@@ -178,6 +183,7 @@ def analyze_args(args):
     model_args['prompt'] = args.prompt
     model_args['prompt_file'] = args.prompt_file
     model_args['prompt_token_ids'] = args.prompt_token_ids
+    model_args['cpu_affinity'] = args.cpu_affinity
     model_args['infer_count'] = args.infer_count
     model_args["num_steps"] = args.num_steps
     model_args["height"] = args.height
@@ -258,10 +264,10 @@ def analyze_args(args):
     use_case = None
     model_name = None
     model_type = None
-    if model_framework in ('ov', 'pt'):
+    if model_framework in ('ov', 'pt', 'llamacpp'):
         from llm_bench_utils.get_use_case import get_use_case
 
-        use_case, model_type, model_name = get_use_case(Path(args.model), args.task)
+        use_case, model_type, model_name = get_use_case(Path(args.model), select_task(args.task, model_framework))
         use_case.model_type = model_type
     model_args["use_case"] = use_case
     model_args["model_type"] = model_type
@@ -286,6 +292,12 @@ def analyze_args(args):
         model_args["config_report"] = dict(model_args["config"])
     elif args.attention_backend is not None:
         raise RuntimeError("--attention_backend is supported only for the OpenVINO framework")
+    elif model_framework == 'llamacpp':
+        from llm_bench_utils.llamacpp_utils import resolve_model_args
+
+        resolve_model_args(model_args)
+        model_args["config_report"] = dict(model_args["config"])
+        log.info(f"llama.cpp Config={model_args['config']}")
     elif model_framework == 'pt':
         log.info(f"PT Config={model_args['config']}")
     model_args['model_name'] = model_name

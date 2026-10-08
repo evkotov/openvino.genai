@@ -182,6 +182,16 @@ def package_versions():
     return versions
 
 
+def openmp_runtimes(proc_root="/proc"):
+    """OpenMP runtime libraries loaded in this process; their default wait policy changes the speed of OpenMP code."""
+    libs = set()
+    for line in (read_text(os.path.join(proc_root, "self/maps")) or "").splitlines():
+        path = line.split()[-1] if line.split() else ""
+        if os.path.basename(path).startswith(("libgomp", "libiomp", "libomp")):
+            libs.add(path)
+    return sorted(libs)
+
+
 def env_vars():
     return {k: v for k, v in sorted(os.environ.items()) if k.startswith(ENV_PREFIXES)}
 
@@ -301,6 +311,7 @@ class EnvironmentRecorder:
         env = {
             "command_line": list(sys.argv if argv is None else argv),
             "packages": package_versions(),
+            "openmp_runtimes": openmp_runtimes(self.proc_root),
             "env": env_vars(),
             "host": host_info(self.sys_root, self.proc_root),
             "run": {k: v for k, v in run.items() if v is not None},

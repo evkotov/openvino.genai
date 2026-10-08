@@ -22,6 +22,7 @@ jinja2>=3.1.0,<=3.1.6
 # For text_rerank model types
 scipy>=1.3.2,<=1.18.0
 gguf_parser==0.1.1
+# Optional, for -f llamacpp: llama-cpp-python
 gguf>=0.10,<=0.19.0
 # For smolvlm2-256m-video-instruct model
 num2words==0.5.14
