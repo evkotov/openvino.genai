@@ -10,6 +10,7 @@ import logging as log
 import librosa
 from transformers.image_utils import load_image
 from .model_utils import get_param_from_file, resolve_media_file_path
+from .token_prompt import TokenIdsPrompt, read_token_ids_file
 from .parse_json_data import parse_text_json_data, parse_vlm_json_data, parse_image_json_data, parse_video_json_data
 from pathlib import Path
 import openvino as ov
@@ -17,16 +18,23 @@ import math
 import cv2
 
 
-def get_text_prompt(args):
-    text_list = []
-    output_data_list, is_json_data = get_param_from_file(args, 'prompt')
-    if is_json_data is True:
-        text_param_list = parse_text_json_data(output_data_list)
-        if len(text_param_list) > 0:
-            for text in text_param_list:
-                text_list.append(text)
+def get_text_prompt(args, allow_token_ids=False):
+    if args.get('prompt_token_ids') is not None:
+        if args['prompt'] is not None or args['prompt_file'] is not None:
+            raise RuntimeError('== --prompt_token_ids can not be combined with a prompt or a prompt file ==')
+        text_list = [read_token_ids_file(args['prompt_token_ids'])]
     else:
-        text_list.append(output_data_list[0])
+        text_list = []
+        output_data_list, is_json_data = get_param_from_file(args, 'prompt')
+        if is_json_data is True:
+            text_param_list = parse_text_json_data(output_data_list)
+            if len(text_param_list) > 0:
+                for text in text_param_list:
+                    text_list.append(text)
+        else:
+            text_list.append(output_data_list[0])
+    if not allow_token_ids and any(isinstance(text, TokenIdsPrompt) for text in text_list):
+        raise RuntimeError(f'== Token id prompts are supported only for text generation, not for {args["use_case"].task} ==')
     return text_list
 
 

@@ -2,6 +2,8 @@
 # Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+from llm_bench_utils.token_prompt import parse_token_ids
+
 
 def create_base_prompt(json_data, key="prompt", optional=False):
     prompt_data = {}
@@ -19,6 +21,9 @@ def create_base_prompt(json_data, key="prompt", optional=False):
 def parse_text_json_data(json_data_list):
     text_param_list = []
     for json_data in json_data_list:
+        if "input_ids" in json_data:
+            text_param_list.append(parse_token_ids(json_data["input_ids"], "prompt file"))
+            continue
         prompt_data = create_base_prompt(json_data)
         text_param_list.append(prompt_data["prompt"])
     return text_param_list

@@ -18,6 +18,7 @@ from llm_bench_utils.ov_utils import get_genai_chunk_streamer, OptimumChunkStrea
 import llm_bench_utils.output_file
 import llm_bench_utils.gen_output_data as gen_output_data
 from llm_bench_utils.prompt_utils import get_text_prompt
+from llm_bench_utils.token_prompt import TokenIdsPrompt, token_ids_batch, token_ids_digest
 
 FW_UTILS = {'pt': llm_bench_utils.pt_utils, 'ov': llm_bench_utils.ov_utils}
 
@@ -85,6 +86,7 @@ def save_input_data_to_file(
 ):
     if args["output_dir"] is None or iter_num > 0:
         return
+    input_text_list = [" ".join(map(str, text)) if isinstance(text, TokenIdsPrompt) else text for text in input_text_list]
 
     if is_chat:
         llm_bench_utils.output_file.output_input_text(
@@ -95,6 +97,22 @@ def save_input_data_to_file(
             llm_bench_utils.output_file.output_input_text(
                 in_text, args, model_precision, prompt_index, bs_index, proc_id, is_chat
             )
+
+
+def token_ids_input(input_text, args, num, prefix):
+    """Returns the input ids of a token id prompt as an int64 array [batch_size, n]."""
+    if args["apply_chat_template"]:
+        raise RuntimeError("--apply_chat_template can not be used with token id prompts")
+    if num == 0 and not args.get("disable_prompt_permutation", False):
+        log.info("%s Prompt permutation is not applied to token id prompts", prefix)
+    return token_ids_batch(input_text, args["batch_size"], args.get("num_prefill_tokens"))
+
+
+def genai_token_ids_input(input_ids):
+    from openvino_genai import TokenizedInputs
+    import openvino as ov
+
+    return TokenizedInputs(input_ids=ov.Tensor(input_ids), attention_mask=ov.Tensor(np.ones_like(input_ids)))
 
 
 def print_input_info(args: dict, iter_num: int, input_token_size: int):
@@ -209,20 +227,25 @@ def run_text_generation(
     input_text_list = [input_text] * args["batch_size"]
     save_input_data_to_file(input_text_list, args, model_precision, prompt_index, num, proc_id)
 
-    if args["apply_chat_template"]:
+    token_ids = isinstance(input_text, TokenIdsPrompt)
+    if args["apply_chat_template"] and not token_ids:
         input_text_hist = [{'role': 'user', 'content': input_text}]
         templated_input_text = tokenizer.apply_chat_template(input_text_hist, tokenize=False, add_generation_prompt=True)
         input_text_list = [templated_input_text] * args['batch_size']
 
     # ===== Tokenization =====
     tok_encode_start = time.perf_counter()
-    input_data = tokenizer(input_text_list, return_tensors='pt')
+    if token_ids:
+        input_ids = torch.from_numpy(token_ids_input(input_text, args, num, prefix))
+        input_data = {"input_ids": input_ids, "attention_mask": torch.ones_like(input_ids)}
+    else:
+        input_data = tokenizer(input_text_list, return_tensors='pt')
     tok_encode_end = time.perf_counter()
     tok_encode_time = (tok_encode_end - tok_encode_start) * 1000
     input_data.pop('token_type_ids', None)
 
     target_prefill_tokens = args.get("num_prefill_tokens", None)
-    if target_prefill_tokens is not None:
+    if target_prefill_tokens is not None and not token_ids:
         input_ids = input_data["input_ids"]
         attention_mask = input_data["attention_mask"]
         n_prefill_tokens = min(int(target_prefill_tokens), input_ids.shape[1])
@@ -321,6 +344,8 @@ def run_text_generation(
         tokenization_time=(tok_encode_time, tok_decode_time),
         **memory_metrics,
     )
+    if token_ids:
+        iter_data["input_ids_sha1"] = token_ids_digest(list(input_text)[:args.get("num_prefill_tokens") or len(input_text)])
     iter_data_list.append(iter_data)
     metrics_print.print_metrics(
         num,
@@ -464,16 +489,20 @@ def run_text_generation_genai(
 
     # ===== Tokenization =====
     tokenizer = model.get_tokenizer()
-    if args["apply_chat_template"]:
+    token_ids = isinstance(input_text, TokenIdsPrompt)
+    if args["apply_chat_template"] and not token_ids:
         input_text_list = apply_chat_template_genai(args, input_text, tokenizer)
 
     tokenization_start = time.perf_counter()
-    input_data = tokenizer.encode(input_text_list)
+    if token_ids:
+        input_data = genai_token_ids_input(token_ids_input(input_text, args, num, prefix))
+    else:
+        input_data = tokenizer.encode(input_text_list)
     tokenization_end = time.perf_counter()
     tokenization_time = [(tokenization_end - tokenization_start) * 1000]
 
     # ===== Prompt permutation and Generation Config =====
-    enable_prompt_permutations = not args.get("disable_prompt_permutation", False)
+    enable_prompt_permutations = not token_ids and not args.get("disable_prompt_permutation", False)
     if enable_prompt_permutations:
         log.warning(
             "Enabled input prompt permutations. It means that generated results may vary on different steps. "
@@ -494,7 +523,7 @@ def run_text_generation_genai(
         input_data = TokenizedInputs(input_ids=ov.Tensor(input_ids), attention_mask=attention_mask)
 
     target_prefill_tokens = args.get("num_prefill_tokens", None)
-    if target_prefill_tokens is not None:
+    if target_prefill_tokens is not None and not token_ids:
         input_ids = input_data.input_ids.data
         n_prefill_tokens = min(int(target_prefill_tokens), input_ids.shape[1])
 
@@ -590,6 +619,8 @@ def run_text_generation_genai(
         tokenization_time=tokenization_time,
         **memory_metrics,
     )
+    if token_ids:
+        iter_data["input_ids_sha1"] = token_ids_digest(list(input_text)[:args.get("num_prefill_tokens") or len(input_text)])
     iter_data_list.append(iter_data)
 
     metrics_print.print_metrics(
@@ -631,10 +662,14 @@ def run_text_generation_genai_with_stream(
 
     # ===== Tokenization =====
     pipe_tokenizer = model.get_tokenizer()
-    if args["apply_chat_template"]:
+    token_ids = isinstance(input_text, TokenIdsPrompt)
+    if args["apply_chat_template"] and not token_ids:
         input_text_list = apply_chat_template_genai(args, input_text, pipe_tokenizer)
     tok_encode_start = time.perf_counter()
-    input_data = pipe_tokenizer.encode(input_text_list)
+    if token_ids:
+        input_data = genai_token_ids_input(token_ids_input(input_text, args, num, prefix))
+    else:
+        input_data = pipe_tokenizer.encode(input_text_list)
     tok_encode_end = time.perf_counter()
     input_token_size = input_data.input_ids.shape[1]
     tok_encode_time = (tok_encode_end - tok_encode_start) * 1000
@@ -645,7 +680,7 @@ def run_text_generation_genai_with_stream(
     max_gen_tokens = DEFAULT_OUTPUT_TOKEN_SIZE if args['infer_count'] is None else args['infer_count']
     streamer.reset()
     gen_config = genai_generation_config_setup(model, max_gen_tokens, args)
-    enable_prompt_permutations = not args.get("disable_prompt_permutation", False)
+    enable_prompt_permutations = not token_ids and not args.get("disable_prompt_permutation", False)
     if enable_prompt_permutations:
         log.warning(
             "Enabled input prompt permutations. It means that generated results may vary on different steps. "
@@ -715,6 +750,8 @@ def run_text_generation_genai_with_stream(
         tokenization_time=(tok_encode_time, tok_decode_time),
         **memory_metrics,
     )
+    if token_ids:
+        iter_data["input_ids_sha1"] = token_ids_digest(list(input_text)[:args.get("num_prefill_tokens") or len(input_text)])
     iter_data_list.append(iter_data)
 
     metrics_print.print_metrics(
@@ -738,7 +775,7 @@ def run_text_generation_benchmark(model_path, framework, device, tokens_len, str
     model_precision = model_utils.get_model_precision(model_path.parts)
     iter_data_list = []
     md5_list = {num : {} for num in range(num_iters + 1)}
-    input_text_list = get_text_prompt(args)
+    input_text_list = get_text_prompt(args, allow_token_ids=True)
     if args['prompt_index'] is None:
         prompt_idx_list = [prompt_idx for prompt_idx, input_text in enumerate(input_text_list)]
         text_list = input_text_list
