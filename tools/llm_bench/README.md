@@ -105,6 +105,7 @@ python benchmark.py -m models/llama-2-7b-chat/ -pf prompts/llama-2-7b-chat_l.jso
       Example of setting option via string in PowerShell: `'{\"ATTENTION_BACKEND\": \"SDPA\"}'` <br>
       More information about properties, please, find [OpenVINO documentation](https://docs.openvino.ai/2026/api/c_cpp_api/group__ov__runtime__cpp__prop__api.html).
 - `--attention_backend`: OpenVINO GenAI attention backend, `PA` or `SDPA`. If neither this option nor `-lc` sets `ATTENTION_BACKEND`, llm_bench uses `PA` for text and visual text generation and logs a warning. The JSON report stores the OpenVINO configuration (`metadata.config`) and the values that llm_bench added to it (`metadata.config_injected`).
+- `--cpu_affinity`: CPUs the benchmark process may run on (Linux), e.g. `1,3,5-15:2`. It is applied before any library starts its threads, so all inference threads stay on these CPUs. The OpenVINO CPU plugin builds its CPU map from this mask; the number of inference threads is set with `-lc`.
 - `--optimum`: Use Optimum Intel pipelines for benchmarking.
 - `--from_onnx`: Allow initialize Optimum OpenVINO model using ONNX.
 - `--pruning_ratio`: Percentage of visual tokens to prune (valid range: 0-100). If this option is not provided, pruning is disabled.

@@ -149,6 +149,23 @@ class TestBenchmarkLLM:
 
 
     @pytest.mark.samples
+    @pytest.mark.skipif(not hasattr(os, "sched_getaffinity"), reason="CPU affinity is Linux only")
+    @pytest.mark.parametrize("convert_model", ["tiny-random-qwen2"], indirect=True)
+    def test_python_tool_llm_benchmark_cpu_affinity(self, convert_model, tmp_path):
+        cpus = sorted(os.sched_getaffinity(0))[:2]
+        spec = ",".join(str(cpu) for cpu in cpus)
+        report = tmp_path / "report.json"
+        benchmark_script = SAMPLES_PY_DIR / 'llm_bench/benchmark.py'
+        benchmark_py_command = [sys.executable, benchmark_script, "-m", convert_model, "-d", "cpu", "-n", "1", "-ic", "4",
+                                "--cpu_affinity", spec, "-rj", report]
+        run_sample(benchmark_py_command)
+        environment = json.loads(report.read_text())["metadata"]["environment"]
+        assert sorted(int(c) for c in environment["host"]["process_affinity"].replace("-", ",").split(",")) == cpus
+        busy = [int(c) for c in environment["run"]["busy_thread_cpus"].replace("-", ",").split(",")]
+        assert set(busy) <= set(range(cpus[0], cpus[-1] + 1))
+
+
+    @pytest.mark.samples
     @pytest.mark.parametrize("convert_model", ["tiny-random-qwen2"], indirect=True)
     @pytest.mark.parametrize("framework_args", [[], ["--optimum"]])
     def test_python_tool_llm_benchmark_prompt_token_ids(self, convert_model, framework_args, tmp_path):
