@@ -235,7 +235,6 @@ def run_text_generation(
                 "Please, specify larger prompt to achieve the required number of prefill tokens. "
             )
         elif n_prefill_tokens < input_ids.shape[1]:
-            print(input_data["input_ids"])
             input_data["input_ids"] = input_ids[:, :n_prefill_tokens]
             input_data["attention_mask"] = attention_mask[:, :n_prefill_tokens]
 
