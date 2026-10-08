@@ -73,6 +73,9 @@ wwb --target-model phi-3-openvino --gt-data gt.csv --model-type text --genai
 > **NOTE**: use `--model-type text-chat` option to run evaluation in chat mode<br>
 > **NOTE**: for llama.cpp in `--model-type text`, use `--llamacpp-chat` to force chat-completions formatting.<br>
 > **NOTE**: for llama.cpp in `--model-type text`, use `--llamacpp-n-ctx` to set context window size; if omitted, WWB uses 8192.<br>
+> **NOTE**: for llama.cpp, `--llamacpp-config` passes llama-cpp-python `Llama()` arguments (a JSON string or file), e.g. `'{"n_threads": 8, "flash_attn": true}'`; `n_threads_batch` defaults to `n_threads`.<br>
+> **NOTE**: `--cpu-affinity 1,3,5-15:2` runs WWB on the given CPUs (Linux); WWB restarts itself with this CPU mask, and with `--llamacpp` the OpenMP threads of llama.cpp are bound one per CPU.<br>
+> **NOTE**: a run that writes `--gt-data` also writes `<gt-data name>.run_info.json` next to it, and a target run writes `run_info_target.json` to `--output`, with the command line, arguments, package versions (including the loaded llama.cpp library), loaded OpenMP runtimes, relevant environment variables and the CPU affinity.<br>
 
 ### Compare Visual Language Models with image inputs (VLMs)
 ```sh

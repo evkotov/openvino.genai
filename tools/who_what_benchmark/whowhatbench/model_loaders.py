@@ -64,19 +64,40 @@ def _resolve_torch_dtype(dtype):
         raise ValueError(f"Unsupported PyTorch dtype '{dtype}'. Supported values: {', '.join(TORCH_DTYPES)}.") from exc
 
 
+def _sanitize_llamacpp_config(config, n_ctx):
+    if not isinstance(config, dict):
+        raise ValueError("--llamacpp-config must be a JSON object")
+    config = dict(config)
+    if "model_path" in config:
+        raise ValueError("--llamacpp-config must not set model_path")
+    if n_ctx is not None and config.get("n_ctx", n_ctx) != n_ctx:
+        raise ValueError("--llamacpp-n-ctx conflicts with n_ctx in --llamacpp-config")
+    # as llama-bench: one thread count for prompt processing and generation
+    if config.get("n_threads") is not None:
+        config.setdefault("n_threads_batch", config["n_threads"])
+    return config
+
+
 def _sanitize_load_kwargs(model_type, use_hf, use_genai, use_llamacpp, kwargs):
     sanitized_kwargs = dict(kwargs)
     n_ctx = sanitized_kwargs.get("llamacpp_n_ctx")
+    llamacpp_config = sanitized_kwargs.get("llamacpp_config")
     is_text_task = model_type in ("text", "text-chat")
     is_llamacpp_text_backend = is_text_task and use_llamacpp and not use_hf and not use_genai
 
     if not use_llamacpp:
         if n_ctx is not None:
             raise ValueError("--llamacpp-n-ctx requires --llamacpp")
+        if llamacpp_config:
+            raise ValueError("--llamacpp-config requires --llamacpp")
         sanitized_kwargs.pop("llamacpp_n_ctx", None)
+        sanitized_kwargs.pop("llamacpp_config", None)
         return sanitized_kwargs
 
     if is_llamacpp_text_backend:
+        sanitized_kwargs["llamacpp_config"] = _sanitize_llamacpp_config(llamacpp_config or {}, n_ctx)
+        if n_ctx is None and "n_ctx" in sanitized_kwargs["llamacpp_config"]:
+            n_ctx = sanitized_kwargs["llamacpp_config"]["n_ctx"]
         if n_ctx is None:
             sanitized_kwargs["llamacpp_n_ctx"] = 8192
         else:
@@ -88,8 +109,11 @@ def _sanitize_load_kwargs(model_type, use_hf, use_genai, use_llamacpp, kwargs):
 
     if n_ctx is not None:
         raise ValueError("--llamacpp-n-ctx is supported only when llama.cpp is the selected text backend")
+    if llamacpp_config:
+        raise ValueError("--llamacpp-config is supported only when llama.cpp is the selected text backend")
 
     sanitized_kwargs.pop("llamacpp_n_ctx", None)
+    sanitized_kwargs.pop("llamacpp_config", None)
     return sanitized_kwargs
 
 
@@ -260,9 +284,10 @@ def load_text_llamacpp_pipeline(model_dir, **kwargs):
             "Failed to import llama_cpp. Please install llama-cpp-python to use --llamacpp."
         ) from exc
     n_ctx = kwargs.get("llamacpp_n_ctx", None)
-    model_kwargs = {}
+    model_kwargs = dict(kwargs.get("llamacpp_config") or {})
     if n_ctx is not None:
         model_kwargs["n_ctx"] = int(n_ctx)
+    logger.info("llama.cpp parameters: %s", model_kwargs)
     model_path = os.path.join(model_dir, kwargs["gguf_file"]) if kwargs.get("gguf_file") else model_dir
     model = Llama(model_path, **model_kwargs)
     return model
