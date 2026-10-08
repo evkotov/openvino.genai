@@ -23,6 +23,7 @@ import task.text_to_speech_generation as bench_text_to_speech
 import task.text_reranker as bench_text_rerank
 from llm_bench_utils.model_utils import analyze_args, get_ir_conversion_frontend, get_model_precision
 from llm_bench_utils.memory_monitor import MemoryMonitorHandler
+from llm_bench_utils.system_info import EnvironmentRecorder
 
 
 DEFAULT_TORCH_THREAD_NUMS = 16
@@ -301,6 +302,11 @@ def get_argparser():
         action="store_true",
         help="Deprecated, will be removed soon! Continues batching mode is used by default. "
         'To switch to SPDA mode, please, set up {"ATTENTION_BACKEND": "SDPA"} in --ov-config.',
+    )
+    parser.add_argument(
+        "--model_sha256",
+        action="store_true",
+        help="Store the SHA-256 of the model file in the JSON report (reads the whole file).",
     )
     parser.add_argument(
         "--attention_backend",
@@ -606,6 +612,7 @@ def main():
         **logging_kwargs,
     )
     args = get_argparser()
+    env_recorder = EnvironmentRecorder()
     memory_data_collector = MemoryMonitorHandler(args)
 
     if args.num_assistant_tokens is not None:
@@ -688,6 +695,7 @@ def main():
         memory_data_collector.update_marker("stop")
 
         if args.report is not None or args.report_json is not None:
+            model_args["environment"] = env_recorder.collect(model_path, with_hash=args.model_sha256)
             model_precision = ""
             if framework == "ov":
                 ir_conversion_frontend = get_ir_conversion_frontend(model_args["model_name"], model_path.parts)
