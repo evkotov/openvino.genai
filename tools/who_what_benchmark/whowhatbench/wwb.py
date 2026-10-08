@@ -18,6 +18,7 @@ from datasets import load_dataset
 from typing import Any, Optional
 
 from whowhatbench.model_loaders import TORCH_DTYPES, load_model
+from whowhatbench.run_env import apply_cpu_affinity, dump_run_info, parse_cpu_spec
 from whowhatbench import EVALUATOR_REGISTRY
 from whowhatbench.utils import fix_phi3_v_eos_token_id
 from whowhatbench.chat_visualtext_evaluator import VisualTextChatInput
@@ -293,6 +294,20 @@ def parse_args():
         help="Context window size for llama.cpp backend in model-type 'text' (default: 8192 with --llamacpp).",
     )
     parser.add_argument(
+        "--llamacpp-config",
+        type=str,
+        default=None,
+        help="Path to a JSON file or a JSON string with llama-cpp-python Llama() arguments for --llamacpp, e.g. "
+        "'{\"n_threads\": 8, \"flash_attn\": true}'. n_threads_batch defaults to n_threads.",
+    )
+    parser.add_argument(
+        "--cpu-affinity",
+        type=str,
+        default=None,
+        help="CPUs to run on (Linux), e.g. '1,3,5-15:2'. wwb restarts itself with this CPU mask, so that all threads "
+        "of the inference libraries use it; with --llamacpp the OpenMP threads are bound one per CPU.",
+    )
+    parser.add_argument(
         "--image-size",
         type=int,
         default=None,
@@ -558,6 +573,12 @@ def check_args(args):
 
     if args.llamacpp_chat and not args.llamacpp:
         raise ValueError("--llamacpp-chat requires --llamacpp")
+
+    if args.llamacpp_config is not None and not args.llamacpp:
+        raise ValueError("--llamacpp-config requires --llamacpp")
+
+    if args.cpu_affinity is not None:
+        parse_cpu_spec(args.cpu_affinity)
 
     if args.dataset_field is None and args.model_type != "speech-recognition":
         args.dataset_field = "text"
@@ -1548,6 +1569,7 @@ def print_speech_results(evaluator):
 def main():
     args = parse_args()
     check_args(args)
+    apply_cpu_affinity(args.cpu_affinity, args.llamacpp)
 
     if args.num_assistant_tokens is not None:
         logger.warning(
@@ -1667,6 +1689,8 @@ def main():
         kwargs["speech_language"] = args.speech_language
 
     kwargs["llamacpp_n_ctx"] = args.llamacpp_n_ctx
+    if args.llamacpp_config is not None:
+        kwargs["llamacpp_config"] = get_json_config(args.llamacpp_config)
 
     if args.base_model is not None:
         base_model = load_model(
@@ -1746,6 +1770,11 @@ def main():
             df = pd.DataFrame(all_metrics)
             df.to_csv(os.path.join(args.output, "metrics.csv"))
             evaluator.dump_predictions(os.path.join(args.output, "target.csv"))
+
+    if (args.target_model or args.target_data) and args.output:
+        dump_run_info(os.path.join(args.output, "run_info_target.json"), args)
+    elif args.base_model and args.gt_data:
+        dump_run_info(os.path.splitext(args.gt_data)[0] + ".run_info.json", args)
 
     if args.verbose and (args.target_model or args.target_data):
         if args.model_type in [
