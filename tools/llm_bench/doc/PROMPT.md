@@ -12,6 +12,17 @@ Prompt file example：
 Prompt file example for chat mode:
 {"prompt": ["what is openvino?", "show examples of use?"]}
 
+A prompt can also be given as token ids, for example to feed the same tokens to several frameworks:
+* `input_ids` - list of token ids, used instead of `prompt`
+
+Prompt file example with token ids：
+{"input_ids": [1, 450, 7483, 310, 3444, 338]}
+
+The ids can also come from a text file with whitespace separated ids (`--prompt_token_ids ids.txt`, the format of
+llama-bench `--prompt-tokens-file`). Token id prompts are not tokenized, prompt permutation and chat templates are not
+applied, and `--num_prefill_tokens N` takes exactly the first N ids. In llama-bench terms, `-np N -ic M` gives `ppN` as
+the first token latency and `tgM` at depth N as the second token latency (M-1 decoded tokens).
+
 ## 2.Stable-diffusion
 Supported parameters that can be set are:
 * `steps` - inference steps (default 20)

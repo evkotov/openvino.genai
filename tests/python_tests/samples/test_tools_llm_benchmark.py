@@ -150,6 +150,23 @@ class TestBenchmarkLLM:
 
     @pytest.mark.samples
     @pytest.mark.parametrize("convert_model", ["tiny-random-qwen2"], indirect=True)
+    @pytest.mark.parametrize("framework_args", [[], ["--optimum"]])
+    def test_python_tool_llm_benchmark_prompt_token_ids(self, convert_model, framework_args, tmp_path):
+        ids_file = tmp_path / "ids.txt"
+        ids_file.write_text(" ".join(str(i) for i in range(10, 26)))
+        report = tmp_path / "report.json"
+        benchmark_script = SAMPLES_PY_DIR / 'llm_bench/benchmark.py'
+        benchmark_py_command = [sys.executable, benchmark_script, "-m", convert_model, "-d", "cpu", "-n", "2", "-ic", "4",
+                                "--prompt_token_ids", ids_file, "--num_prefill_tokens", "8", "-rj", report] + framework_args
+        run_sample(benchmark_py_command)
+        results = json.loads(report.read_text())["perfdata"]["results"]
+        assert len(results) == 3
+        assert all(result["input_size"] == 8 for result in results)
+        assert len({result["input_ids_sha1"] for result in results}) == 1
+
+
+    @pytest.mark.samples
+    @pytest.mark.parametrize("convert_model", ["tiny-random-qwen2"], indirect=True)
     @pytest.mark.parametrize("backend_args, expected, injected", [
         (["--attention_backend", "SDPA"], "SDPA", False),
         ([], "PA", True),

@@ -177,6 +177,7 @@ def analyze_args(args):
     model_args = {}
     model_args['prompt'] = args.prompt
     model_args['prompt_file'] = args.prompt_file
+    model_args['prompt_token_ids'] = args.prompt_token_ids
     model_args['infer_count'] = args.infer_count
     model_args["num_steps"] = args.num_steps
     model_args["height"] = args.height

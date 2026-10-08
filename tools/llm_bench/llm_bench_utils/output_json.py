@@ -106,6 +106,8 @@ def write_result(report_file, model, framework, device, model_args, iter_data_li
         second_token_throughput = estimate_throughput(other_latency, model_args["batch_size"])
         if second_token_throughput:
             res_data["second_token_throughput"] = second_token_throughput
+        if iter_data.get("input_ids_sha1"):
+            res_data["input_ids_sha1"] = iter_data["input_ids_sha1"]
         result.append(res_data)
 
     keys_to_average = [

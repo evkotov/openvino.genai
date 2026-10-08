@@ -88,6 +88,13 @@ def get_argparser():
         help="Prompt file(s) in jsonl format. Multiple prompt files should be separated with space(s).",
     )
     parser.add_argument(
+        "--prompt_token_ids",
+        default=None,
+        help="Text file with whitespace separated token ids used as the prompt of text generation (the format of "
+        "llama-bench --prompt-tokens-file). The ids are passed to the model without tokenization and prompt permutation; "
+        "with --num_prefill_tokens N the first N ids are used. A prompt file line can give ids as {\"input_ids\": [...]}.",
+    )
+    parser.add_argument(
         "-pi",
         "--prompt_index",
         nargs="+",
