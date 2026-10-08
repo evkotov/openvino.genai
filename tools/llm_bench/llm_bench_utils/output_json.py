@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import json
+from llm_bench_utils.stats import prompt_stats
 from llm_bench_utils.memory_monitor import MemoryUnit, MemThreadHandler
 
 
@@ -146,6 +147,9 @@ def write_result(report_file, model, framework, device, model_args, iter_data_li
                                   'results': result} | get_pre_gen_memory_data(memory_data_collector)}
     if len(results_averaged) > 0:
         output_result['perfdata']['results_averaged'] = results_averaged
+    results_stats = prompt_stats(iter_data_list, model_args["batch_size"])
+    if len(results_stats) > 0:
+        output_result['perfdata']['results_stats'] = results_stats
 
     with open(report_file, 'w') as outfile:
         json.dump(output_result, outfile, indent=4)

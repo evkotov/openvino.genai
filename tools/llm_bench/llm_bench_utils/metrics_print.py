@@ -2,6 +2,7 @@
 # Copyright (C) 2023-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 import logging as log
+from llm_bench_utils.stats import prompt_stats
 import sys
 
 MAX_INPUT_TXT_IN_LOG = 1024
@@ -454,6 +455,24 @@ def print_average(
         for input_key in inputs_dict:
             out_str += inputs_dict[input_key]
         log.info(out_str)
+        if is_text_gen and not chat_mode:
+            print_prompt_stats(iter_data_list, batch_size)
+
+
+def _format_stat(stat, unit):
+    low, high = stat["median_ci"]
+    return f"median {stat['median']:.2f} {unit} (95% CI {low:.2f}-{high:.2f}, CV {stat['cv_pct']:.1f}%, n={stat['n']})"
+
+
+def print_prompt_stats(iter_data_list, batch_size):
+    for prompt_idx, entry in prompt_stats(iter_data_list, batch_size).items():
+        parts = []
+        if "first_latency" in entry:
+            parts.append(f"1st token latency: {_format_stat(entry['first_latency'], 'ms')}")
+        if "second_avg_latency" in entry:
+            parts.append(f"2nd token latency: {_format_stat(entry['second_avg_latency'], 'ms')}")
+        if parts:
+            log.info(f"[Stats] P[{prompt_idx}] " + ", ".join(parts))
 
 
 def print_whisper_infer_latency(iter_str, whisper, prompt_idx=-1):
