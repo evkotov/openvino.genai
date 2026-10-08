@@ -79,7 +79,8 @@ def get_argparser():
     parser.add_argument("-r", "--report", help="report csv")
     parser.add_argument("-rj", "--report_json", help="report json")
     parser.add_argument(
-        "-f", "--framework", default="ov", choices={"ov", "pt"}, help="inference framework, ov: OpenVINO, pt: PyTorch"
+        "-f", "--framework", default="ov", choices={"ov", "pt", "llamacpp"},
+        help="inference framework, ov: OpenVINO, pt: PyTorch, llamacpp: llama.cpp via llama-cpp-python (GGUF text generation)"
     )
     parser.add_argument("-p", "--prompt", default=None, help="one prompt")
     parser.add_argument(

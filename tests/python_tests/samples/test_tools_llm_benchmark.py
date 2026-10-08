@@ -734,6 +734,29 @@ class TestBenchmarkLLM:
 
 
     @pytest.mark.samples
+    @pytest.mark.parametrize("framework", ["llamacpp", "ov"])
+    def test_python_tool_llm_benchmark_gguf_same_token_ids(self, framework, tmp_path):
+        if framework == "llamacpp":
+            pytest.importorskip("llama_cpp")
+        gguf_model = GGUF_MODEL_LIST[0]
+        gguf_full_path = download_gguf_model(gguf_model["gguf_model_id"], gguf_model["gguf_filename"])
+        ids_file = tmp_path / "ids.txt"
+        ids_file.write_text(" ".join(str(i) for i in range(100, 164)))
+        report = tmp_path / "report.json"
+        benchmark_script = SAMPLES_PY_DIR / 'llm_bench/benchmark.py'
+        benchmark_py_command = [sys.executable, benchmark_script, "-m", gguf_full_path, "-d", "cpu", "-f", framework,
+                                "-n", "2", "-ic", "8", "--prompt_token_ids", ids_file, "-np", "32", "-rj", report]
+        run_sample(benchmark_py_command)
+        data = json.loads(report.read_text())
+        results = data["perfdata"]["results"]
+        assert all(result["input_size"] == 32 and result["output_size"] == 8 for result in results)
+        assert len({result["input_ids_sha1"] for result in results}) == 1
+        assert data["perfdata"]["results_stats"]["0"]["second_avg_latency"]["n"] == 2
+        if framework == "llamacpp":
+            assert data["metadata"]["config"]["n_threads"] == data["metadata"]["config"]["n_threads_batch"]
+
+
+    @pytest.mark.samples
     @pytest.mark.transformers_lower_v5(
         reason="llava-next-video hasn't supported by optimum-intel 423b423 with transformers>=5.0 yet"
     )

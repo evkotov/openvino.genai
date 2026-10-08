@@ -32,12 +32,13 @@ def parse_cpu_spec(spec):
     return sorted(cpus)
 
 
-def option_value(argv):
+def option_value(argv, names=(OPTION,)):
     for i, arg in enumerate(argv):
-        if arg == OPTION and i + 1 < len(argv):
-            return argv[i + 1]
-        if arg.startswith(OPTION + "="):
-            return arg.split("=", 1)[1]
+        for name in names:
+            if arg == name and i + 1 < len(argv):
+                return argv[i + 1]
+            if arg.startswith(name + "="):
+                return arg.split("=", 1)[1]
     return None
 
 
@@ -55,10 +56,16 @@ def apply_cpu_affinity(cpus):
 
 
 def apply_from_argv(argv=None):
-    spec = option_value(sys.argv if argv is None else argv)
+    argv = sys.argv if argv is None else argv
+    spec = option_value(argv)
     if spec is None:
         return None
-    return apply_cpu_affinity(parse_cpu_spec(spec))
+    cpus = apply_cpu_affinity(parse_cpu_spec(spec))
+    # llama.cpp CPU builds use OpenMP; bind its thread i to the i-th CPU. libgomp reads this when it is loaded
+    # (torch loads it too), so it is set here. OpenVINO TBB builds ignore it.
+    if option_value(argv, ("-f", "--framework")) == "llamacpp" and "GOMP_CPU_AFFINITY" not in os.environ:
+        os.environ["GOMP_CPU_AFFINITY"] = " ".join(str(cpu) for cpu in cpus)
+    return cpus
 
 
 try:

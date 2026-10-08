@@ -7,6 +7,7 @@ import datetime
 import logging as log
 import llm_bench_utils.ov_utils
 import llm_bench_utils.pt_utils
+import llm_bench_utils.llamacpp_utils
 import llm_bench_utils.model_utils as model_utils
 import numpy as np
 import torch
@@ -20,7 +21,7 @@ import llm_bench_utils.gen_output_data as gen_output_data
 from llm_bench_utils.prompt_utils import get_text_prompt
 from llm_bench_utils.token_prompt import TokenIdsPrompt, token_ids_batch, token_ids_digest
 
-FW_UTILS = {'pt': llm_bench_utils.pt_utils, 'ov': llm_bench_utils.ov_utils}
+FW_UTILS = {'pt': llm_bench_utils.pt_utils, 'ov': llm_bench_utils.ov_utils, 'llamacpp': llm_bench_utils.llamacpp_utils}
 
 _SD_SUPPORTED_KEYS = {
     "num_assistant_tokens": int,
@@ -769,6 +770,99 @@ def run_text_generation_genai_with_stream(
     streamer.reset()
 
 
+def run_text_generation_llamacpp(
+    input_text,
+    num,
+    model,
+    tokenizer,
+    args,
+    iter_data_list,
+    md5_list,
+    prompt_index,
+    bench_hook,
+    tokens_len,
+    streaming,
+    model_precision,
+    proc_id,
+    mem_consumption,
+    prefix,
+):
+    if args["apply_chat_template"]:
+        raise RuntimeError("--apply_chat_template is not supported by the llamacpp framework")
+    save_input_data_to_file([input_text], args, model_precision, prompt_index, num, proc_id)
+
+    # ===== Tokenization =====
+    token_ids = isinstance(input_text, TokenIdsPrompt)
+    tok_encode_start = time.perf_counter()
+    if token_ids:
+        input_ids = token_ids_input(input_text, args, num, prefix)[0].tolist()
+    else:
+        input_ids = llm_bench_utils.llamacpp_utils.tokenize(model, input_text)
+        target_prefill_tokens = args.get("num_prefill_tokens", None)
+        if target_prefill_tokens is not None:
+            if target_prefill_tokens > len(input_ids):
+                log.warning(f"The reqested number num_prefill_tokens({target_prefill_tokens}tokens) is larger than the actual "
+                            f"number of input tokens in prompt({len(input_ids)}tokens). Using {len(input_ids)} tokens.")
+            input_ids = input_ids[:target_prefill_tokens]
+    tok_encode_time = (time.perf_counter() - tok_encode_start) * 1000
+    print_input_info(args, num, len(input_ids))
+
+    # === Generation ===
+    max_gen_tokens = DEFAULT_OUTPUT_TOKEN_SIZE if args["infer_count"] is None else args["infer_count"]
+    mem_consumption.start(num)
+    log.info("%s Text generation start: %s", prefix, datetime.datetime.now().isoformat())
+    start = time.perf_counter()
+    generated_tokens, tm_list = llm_bench_utils.llamacpp_utils.generate(model, input_ids, int(max_gen_tokens))
+    end = time.perf_counter()
+    log.info("%s Text generation end: %s", prefix, datetime.datetime.now().isoformat())
+    generation_time = end - start
+    memory_metrics = mem_consumption.iter_stop_and_collect_data(num)
+
+    # ===== Detokenization =====
+    tok_decode_start = time.perf_counter()
+    generated_text = [llm_bench_utils.llamacpp_utils.detokenize(model, generated_tokens)]
+    tok_decode_time = (time.perf_counter() - tok_decode_start) * 1000
+
+    # ===== Performance Data Collection and Print Results =====
+    num_tokens = len(generated_tokens)
+    if args["output_dir"] is not None:
+        llm_bench_utils.output_file.output_gen_text(generated_text[0], args, model_precision, prompt_index, num, 0, proc_id)
+    result_md5_list = [hashlib.new("md5", generated_text[0].encode(), usedforsecurity=False).hexdigest()]
+    if len(md5_list[num]) == 0:
+        md5_list[num] = {prompt_index: result_md5_list}
+    else:
+        md5_list[num][prompt_index] = result_md5_list
+    per_token_time = generation_time * 1000 / num_tokens if num_tokens > 0 else ""
+
+    iter_data = gen_output_data.gen_iterate_data(
+        iter_idx=num,
+        in_size=len(input_ids),
+        infer_count=len(tm_list),
+        out_size=num_tokens,
+        gen_time=generation_time,
+        latency=per_token_time,
+        res_md5=result_md5_list,
+        prompt_idx=prompt_index,
+        tokenization_time=(tok_encode_time, tok_decode_time),
+        **memory_metrics,
+    )
+    if token_ids:
+        iter_data["input_ids_sha1"] = token_ids_digest(input_ids)
+    iter_data_list.append(iter_data)
+    metrics_print.print_metrics(
+        num,
+        iter_data,
+        tm_list,
+        tm_list,
+        warm_up=(num == 0),
+        tokenization_time=(tok_encode_time, tok_decode_time),
+        batch_size=1,
+        prompt_idx=prompt_index,
+        prefill_time=tm_list[0] * 1000 if args.get("num_prefill_tokens", None) else "",
+    )
+    print_generated_output(prompt_index, num, result_md5_list, md5_list, generated_text)
+
+
 def run_text_generation_benchmark(model_path, framework, device, tokens_len, streaming, args, num_iters, mem_consumption):
     mem_consumption.update_marker("model")
     model, tokenizer, pretrain_time, bench_hook, use_genai = FW_UTILS[framework].create_text_gen_model(model_path, device, mem_consumption, **args)
@@ -792,7 +886,9 @@ def run_text_generation_benchmark(model_path, framework, device, tokens_len, str
              f'prompt nums: {len(text_list)}, prompt idx: {prompt_idx_list}')
 
     # if num_iters == 0, just output warm-up data
-    if not use_genai:
+    if framework == "llamacpp":
+        text_gen_fn = run_text_generation_llamacpp
+    elif not use_genai:
         text_gen_fn = run_text_generation
     elif bench_hook is not None:
         text_gen_fn = run_text_generation_genai_with_stream
