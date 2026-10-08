@@ -5,6 +5,7 @@ import os
 import sys
 import argparse
 import logging as log
+import llm_bench_utils.cpu_affinity  # applies --cpu_affinity, must be imported before openvino and torch
 from openvino import get_version
 import torch
 import traceback
@@ -302,6 +303,13 @@ def get_argparser():
         action="store_true",
         help="Deprecated, will be removed soon! Continues batching mode is used by default. "
         'To switch to SPDA mode, please, set up {"ATTENTION_BACKEND": "SDPA"} in --ov-config.',
+    )
+    parser.add_argument(
+        "--cpu_affinity",
+        default=None,
+        help="CPUs the benchmark process may run on, e.g. '1,3,5-15:2' (a range may have a step after ':'). "
+        "It is applied before any library starts threads. OpenVINO CPU plugin builds its CPU map from this mask; "
+        "the number of inference threads is still set with -lc/--ov-config.",
     )
     parser.add_argument(
         "--model_sha256",
