@@ -109,8 +109,8 @@ def output_avg_min_median(iter_data_list, include_tts_metrics=False):
         if include_tts_metrics:
             key_word.extend(["tts_output_duration_s", "tts_sample_rate", "tts_rtf"])
         if len(same_prompt_datas) > 0:
-            iters_idx = ['avg', 'mini', 'median']
-            result[prompt_idx] = [copy.deepcopy(same_prompt_datas[0]) for i in range(3)]
+            iters_idx = ['avg', 'mini', 'median', 'stdev', 'cv(%)']
+            result[prompt_idx] = [copy.deepcopy(same_prompt_datas[0]) for i in range(len(iters_idx))]
             for i in range(len(iters_idx)):
                 result[prompt_idx][i]['iteration'] = iters_idx[i]
             for key in key_word:
@@ -122,6 +122,9 @@ def output_avg_min_median(iter_data_list, include_tts_metrics=False):
                     result[prompt_idx][0][key] = np.mean(values)
                     result[prompt_idx][1][key] = np.min(values)
                     result[prompt_idx][2][key] = np.median(values)
+                    stdev = np.std(values, ddof=1) if len(values) > 1 else 0.0
+                    result[prompt_idx][3][key] = stdev
+                    result[prompt_idx][4][key] = 100.0 * stdev / np.mean(values) if np.mean(values) != 0 else 0.0
     return result
 
 

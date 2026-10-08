@@ -115,6 +115,14 @@ python benchmark.py -m models/llama-2-7b-chat/ -pf prompts/llama-2-7b-chat_l.jso
 python ./benchmark.py -h # for more information
 ```
 
+#### Spread of the results
+For every prompt llm_bench reports the median, standard deviation, coefficient of variation and a 95% bootstrap
+confidence interval of the median of the 1st and 2nd token latencies over the measured iterations (the warm-up is
+excluded): in the log (`[Stats]` lines), in the CSV report (`stdev` and `cv(%)` rows) and in the JSON report
+(`perfdata.results_stats`, also with the derived 1st token (prefill) and 2nd token throughputs). These numbers describe
+one process. The difference between processes is often larger, so a comparison of two configurations should run each of
+them in several processes.
+
 #### Benchmarking the Original PyTorch Model:
 To benchmark the original PyTorch model, first download the model locally and then run benchmark by specifying PyTorch as the framework with parameter `-f pt`
 
