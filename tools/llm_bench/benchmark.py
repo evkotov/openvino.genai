@@ -296,6 +296,13 @@ def get_argparser():
         'To switch to SPDA mode, please, set up {"ATTENTION_BACKEND": "SDPA"} in --ov-config.',
     )
     parser.add_argument(
+        "--attention_backend",
+        choices=["PA", "SDPA"],
+        default=None,
+        help="OpenVINO GenAI attention backend (ATTENTION_BACKEND). "
+        "If neither this option nor --ov-config sets it, PA is used for text and visual text generation.",
+    )
+    parser.add_argument(
         "--cb_config",
         required=False,
         default=None,

@@ -150,6 +150,25 @@ def set_default_param_for_ov_config(ov_config):
         ov_config['CACHE_DIR'] = ''
 
 
+PA_DEFAULT_TASKS = ("text_gen", "text_gen_chat", "visual_text_gen", "visual_text_gen_chat")
+
+
+def apply_ov_config_defaults(ov_config, attention_backend, task, device, optimum):
+    """Sets the llm_bench defaults in ov_config and returns the values that were not set by the user."""
+    if attention_backend is not None:
+        user_value = ov_config.get("ATTENTION_BACKEND")
+        if user_value is not None and user_value != attention_backend:
+            raise RuntimeError(f"--attention_backend {attention_backend} conflicts with ATTENTION_BACKEND={user_value} in --ov-config")
+        ov_config["ATTENTION_BACKEND"] = attention_backend
+    keys_before = set(ov_config)
+    set_default_param_for_ov_config(ov_config)
+    if "ATTENTION_BACKEND" not in ov_config and not optimum and device != "NPU" and task in PA_DEFAULT_TASKS:
+        ov_config["ATTENTION_BACKEND"] = PA_ATTENTION_BACKEND
+        log.warning(f"ATTENTION_BACKEND is not set, llm_bench uses {PA_ATTENTION_BACKEND}. "
+                    "Set --attention_backend to make the choice explicit.")
+    return {key: ov_config[key] for key in ov_config if key not in keys_before}
+
+
 TASK_ALIASES = {"embed": "text_embed"}
 
 
@@ -257,12 +276,15 @@ def analyze_args(args):
         config = get_config(ov_config)
         if type(config) is dict and len(config) > 0:
             model_args["config"] = config
+    model_args["config_injected"] = {}
     if model_framework == "ov":
-        set_default_param_for_ov_config(model_args["config"])
-        if "ATTENTION_BACKEND" not in model_args["config"] and not optimum and args.device != "NPU":
-            if use_case.task in ["text_gen", "text_gen_chat", "visual_text_gen", "visual_text_gen_chat"]:
-                model_args["config"]["ATTENTION_BACKEND"] = PA_ATTENTION_BACKEND
+        model_args["config_injected"] = apply_ov_config_defaults(
+            model_args["config"], args.attention_backend, use_case.task, args.device, optimum)
         log.info(f"OV Config={model_args['config']}")
+        # the pipeline code may pop keys from config later
+        model_args["config_report"] = dict(model_args["config"])
+    elif args.attention_backend is not None:
+        raise RuntimeError("--attention_backend is supported only for the OpenVINO framework")
     elif model_framework == 'pt':
         log.info(f"PT Config={model_args['config']}")
     model_args['model_name'] = model_name

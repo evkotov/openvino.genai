@@ -1,6 +1,7 @@
 # Copyright (C) 2025-2026 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 
+import json
 import os
 import pytest
 import sys
@@ -145,6 +146,23 @@ class TestBenchmarkLLM:
         benchmark_script = SAMPLES_PY_DIR / 'llm_bench/benchmark.py'
         benchmark_py_command = [sys.executable, benchmark_script, "-m" , convert_model] + sample_args
         run_sample(benchmark_py_command)
+
+
+    @pytest.mark.samples
+    @pytest.mark.parametrize("convert_model", ["tiny-random-qwen2"], indirect=True)
+    @pytest.mark.parametrize("backend_args, expected, injected", [
+        (["--attention_backend", "SDPA"], "SDPA", False),
+        ([], "PA", True),
+    ])
+    def test_python_tool_llm_benchmark_attention_backend(self, convert_model, backend_args, expected, injected, tmp_path):
+        report = tmp_path / "report.json"
+        benchmark_script = SAMPLES_PY_DIR / 'llm_bench/benchmark.py'
+        benchmark_py_command = [sys.executable, benchmark_script, "-m", convert_model, "-d", "cpu", "-n", "1",
+                                "-ic", "4", "-rj", report] + backend_args
+        run_sample(benchmark_py_command)
+        metadata = json.loads(report.read_text())["metadata"]
+        assert metadata["config"]["ATTENTION_BACKEND"] == expected
+        assert ("ATTENTION_BACKEND" in metadata["config_injected"]) == injected
 
 
     @pytest.mark.samples

@@ -17,7 +17,8 @@ def estimate_throughput(latency, bs, ms=True):
 
 def write_result(report_file, model, framework, device, model_args, iter_data_list, pretrain_time, model_precision, iter_timestamp, memory_data_collector):
     metadata = {'model': model, 'framework': framework, 'device': device, 'precision': model_precision,
-                'num_beams': model_args['num_beams'], 'batch_size': model_args['batch_size']}
+                'num_beams': model_args['num_beams'], 'batch_size': model_args['batch_size'],
+                'config': model_args.get('config_report', model_args.get('config', {})), 'config_injected': model_args.get('config_injected', {})}
     result = []
     total_iters = len(iter_data_list)
     for i in range(total_iters):
